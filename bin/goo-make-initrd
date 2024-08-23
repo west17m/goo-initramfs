@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+
+KEYFILE=/root/test.crypt
+KEYDEVNAME=testkey2
+
+KEYDEV="/dev/mapper/$KEYDEVNAME"
+
+set -e
+set -o pipefail
+set -o nounset
+
+############################
+# global variables
+############################
+action=false
+verbose=false
+verbose=false
+
+############################
+#
+# core functions
+#
+###########################
+
+# internal tracelog function
+_traceback() {
+    local -i start=$(( ${1:-0} + 1 ))
+    local -i end=${#BASH_SOURCE[@]}
+    local -i i=0
+    local -i j=0
+    echo "  Traceback (last call is first):" 1>&2
+    for ((i=${start}; i < ${end}; i++)); do
+        j=$(( $i - 1 ))
+        local function="${FUNCNAME[$i]}"
+        local file="${BASH_SOURCE[$i]}"
+        local line="${BASH_LINENO[$j]}"
+        echo "  # ${function}() in ${file}:${line}" 1>&2
+    done
+}
+
+# usage: die <error string> [traces nb=1]
+_die() {
+    {   echo '---'
+        echo "!! > $1"
+        _traceback "${2:-1}"
+        echo '---'
+    } 1>&2
+    exit 2
+}
+
+_echo() {
+  echo -e " * $1"
+  return 0
+}
+
+_vecho() {
+  $verbose && echo " > $1"
+  return 0
+}
+
+_usage() {
+  # valid formats
+  #   [ -a | --alpha ]
+  #   [ -b | --beta input ]
+  >&2 cat << EOF
+  Usage: $0 <action>
+     [ -d | --debug ]   turn on debugging output (xtrace)
+     [ -h | --help ]    show this screen
+     [ -v | --verbose ] increase output
+  Valid actions:
+     make-keyfile: create an encrypted keyfile
+     clean:        clean up directories generated during build for initrd
+EOF
+  return 0
+}
+
+############################
+#
+# command line argument processing
+#
+###########################
+_parse_ags_main() {
+
+  # valid formats
+  #      -o a long --alpha
+  #      -o b long --beta:
+  args=$(getopt -a -o dhv --long debug,help,verbose -- "$@")
+
+  eval set -- ${args}
+
+  while :
+  do
+    case $1 in
+      # valid formats
+      #      -a | --alpha)   alpha=1    ; shift   ;;
+      #      -b | --beta)    beta=$2    ; shift 2 ;;
+      -d | --debug)   debug=true    ; shift   ;;
+      -h | --help)    help=true     ; shift   ;;
+      -v | --verbose) verbose=true  ; shift   ;;
+      # -- means the end of the arguments; drop this, and break out of the while loop
+      --) shift; break ;;
+      *) >&2 echo Unsupported option: $1
+         _usage ;;
+    esac
+  done
+
+  if [[ $# -ne 1 ]]; then
+    _usage
+    exit 1
+  fi
+
+  action="$1"
+
+  return 0
+}
+
+############################
+#
+# actions
+#
+###########################
+_action() {
+  _vecho "called _action(): $action"
+
+  case $1 in
+    make-keyfile)   _make-keyfile ; shift   ;;
+    clean)          _clean        ; shift   ;;
+    *) >&2 echo Unsupported action: $1
+       _usage ;;
+  esac
+  return 0
+}
+
+_clean() {
+  source /etc/genkernel.conf
+  rm -rf ${INITRAMFS_OVERLAY}/{usr/lib64,usr/bin,lib64,lib,bin,etc/initrd.d,usr,sbin} || _die "issue removing directories"
+  return 0
+}
+
+# TODO: update comments
+_make-keyfile() {
+
+  _vecho "called _make-keyfile()"
+  # it takes 4k of space to hold the metadata around the
+  # cryptsetup filesystem. This includes the space to create
+  # future key slots.
+  #
+  # We will add 512 Byte of space for the key itself
+  # This should be enough for a ranodm 32 Byte (256-bit) key
+  #
+  # TODO: enable verbose
+  #echo " * make space"
+  if ! [ -f "$KEYFILE" ]; then
+    dd if=/dev/zero of="$KEYFILE" count=4097 status=none
+  else
+    _die "file $KEYFILE already exists, exiting"
+  fi
+
+  _vecho "formating keyfile container"
+  cryptsetup luksFormat --batch-mode --type luks1 "$KEYFILE"
+
+  _vecho "opening keyfile conatiner at $KEYDEVNAME"
+  cryptsetup luksOpen "$KEYFILE" "$KEYDEVNAME"
+
+  _vecho " creating random keyfile"
+  dd if=/dev/urandom of="$KEYDEV" status=none bs=32 count=1 || _die "failed to write keyfile"
+  _vecho "successfully created random keyfile"
+
+
+  cryptsetup luksClose "$KEYDEVNAME"
+  _vecho "closed $KEYDEVNAME"
+
+  return 0
+}
+
+############################
+#
+# main script
+#
+###########################
+
+_parse_ags_main "$@"
+_action "$action"
+
+exit 0
