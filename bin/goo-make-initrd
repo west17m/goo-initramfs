@@ -1,0 +1,260 @@
+#!/usr/bin/env bash
+# TODO add file header
+
+# TODO allow these to be passed by params
+KEYFILE=/root/test.crypt
+KEYDEVNAME=testkey2
+
+KEYDEV="/dev/mapper/$KEYDEVNAME"
+
+set -e
+set -o pipefail
+set -o nounset
+
+############################
+# global variables
+############################
+action=false
+verbose=false
+verbose=false
+
+############################
+#
+# core functions
+#
+###########################
+
+# internal tracelog function
+# TODO add function header
+_traceback() {
+    local -i start=$(( ${1:-0} + 1 ))
+    local -i end=${#BASH_SOURCE[@]}
+    local -i i=0
+    local -i j=0
+    echo "  Traceback (last call is first):" 1>&2
+    for ((i=${start}; i < ${end}; i++)); do
+        j=$(( $i - 1 ))
+        local function="${FUNCNAME[$i]}"
+        local file="${BASH_SOURCE[$i]}"
+        local line="${BASH_LINENO[$j]}"
+        echo "  # ${function}() in ${file}:${line}" 1>&2
+    done
+}
+
+# TODO add function header
+# usage: die <error string> [traces nb=1]
+_die() {
+    {   echo '---'
+        echo "!! > $1"
+        _traceback "${2:-1}"
+        echo '---'
+    } 1>&2
+    exit 2
+}
+
+# TODO add function header
+_echo() {
+  echo -e " * $1"
+  return 0
+}
+
+# TODO add function header
+_vecho() {
+  $verbose && echo " *     $1"
+  return 0
+}
+
+# TODO add function header
+_usage() {
+  # valid formats
+  #   [ -a | --alpha ]
+  #   [ -b | --beta input ]
+  >&2 cat << EOF
+  Usage: $0 <action>
+     [ -d | --debug ]   turn on debugging output (xtrace)
+     [ -h | --help ]    show this screen
+     [ -v | --verbose ] increase output
+  Valid actions:
+     initrd:       alias for make-initrd
+     make-initrd:  create a new initrd file
+     make-keyfile: create an encrypted keyfile
+     clean:        clean up directories generated during build for initrd
+EOF
+  return 0
+}
+
+############################
+#
+# command line argument processing
+#
+###########################
+# TODO add function header
+_parse_ags_main() {
+
+  # valid formats
+  #      -o a long --alpha
+  #      -o b long --beta:
+  args=$(getopt -a -o dhv --long debug,help,verbose -- "$@")
+
+  eval set -- ${args}
+
+  while :
+  do
+    case $1 in
+      # valid formats
+      #      -a | --alpha)   alpha=1    ; shift   ;;
+      #      -b | --beta)    beta=$2    ; shift 2 ;;
+      -d | --debug)   debug=true    ; shift   ;;
+      -h | --help)    help=true     ; shift   ;;
+      -v | --verbose) verbose=true  ; shift   ;;
+      # -- means the end of the arguments; drop this, and break out of the while loop
+      --) shift; break ;;
+      *) >&2 echo Unsupported option: $1
+         _usage ;;
+    esac
+  done
+
+  if [[ $# -ne 1 ]]; then
+    _usage
+    exit 1
+  fi
+
+  action="$1"
+
+  return 0
+}
+
+############################
+#
+# actions
+#
+###########################
+# TODO add function header
+_action() {
+  _vecho "called _action(): $action"
+
+  case $1 in
+    initrd)               _make-initrd  ; shift   ;;
+    make-initrd)          _make-initrd  ; shift   ;;
+    make-keyfile|initrd)  _make-keyfile ; shift   ;;
+    clean)                _clean        ; shift   ;;
+    *) >&2 echo Unsupported action: $1
+       _usage ;;
+  esac
+  return 0
+}
+
+# TODO add function header
+_clean() {
+  source /etc/genkernel.conf
+  rm -rf ${INITRAMFS_OVERLAY}/{usr/lib64,usr/bin,lib64,lib,bin,etc/initrd.d,usr,sbin} || _die "issue removing directories"
+  return 0
+}
+
+# TODO add function header
+_make-keyfile() {
+
+  _vecho "called _make-keyfile()"
+  # it takes 4k of space to hold the metadata around the
+  # cryptsetup filesystem. This includes the space to create
+  # future key slots.
+  #
+  # We will add 512 Byte of space for the key itself
+  # This should be enough for a ranodm 32 Byte (256-bit) key
+  #
+  # TODO: enable verbose
+  #echo " * make space"
+  if ! [ -f "$KEYFILE" ]; then
+    dd if=/dev/zero of="$KEYFILE" count=4097 status=none
+  else
+    _die "file $KEYFILE already exists, exiting"
+  fi
+
+  _vecho "formating keyfile container"
+  cryptsetup luksFormat --batch-mode --type luks1 "$KEYFILE"
+
+  _vecho "opening keyfile conatiner at $KEYDEVNAME"
+  cryptsetup luksOpen "$KEYFILE" "$KEYDEVNAME"
+
+  _vecho " creating random keyfile"
+  dd if=/dev/urandom of="$KEYDEV" status=none bs=32 count=1 || _die "failed to write keyfile"
+  _vecho "successfully created random keyfile"
+
+
+  cryptsetup luksClose "$KEYDEVNAME"
+  _vecho "closed $KEYDEVNAME"
+
+  return 0
+}
+
+# TODO add function header
+_make-initrd() {
+
+  _vecho "called _make-initrd()"
+
+  # TODO move these to the top
+  # TODO allow additional apps via command line params
+  # TODO allow additional apps via configuration file
+  apps="fsck.zfs dialog htop nano reboot zed modprobe nano mount.zfs shutdown zfs zpool column rsync blkid nvme"
+
+  # TODO allow INITRAMFS_OVERLAY variable to be set by command line parameters
+  source /etc/genkernel.conf
+
+  # TODO ensure INITRAMFS_OVERLAY is set and valid before using
+
+  _echo "creating initramfs"
+  # TODO this is a crude way of finding the most recently built kernel
+  NAME=$(ls -tr1 /lib/modules | tail -n 1)
+
+  _vecho "INITRAMFS_OVERLAY: ${INITRAMFS_OVERLAY}"
+  rm -rf "${INITRAMFS_OVERLAY}"/{usr/lib64,usr/bin,lib64,lib,bin,etc/initrd.d,usr,sbin}
+  mkdir -p "${INITRAMFS_OVERLAY}"/{usr/lib64,usr/bin,lib64,lib,bin,etc/initrd.d}
+
+  _vecho "copying modules (zfs, etc) for kernel"
+  rsync -r --delete --quiet /lib/modules "$INITRAMFS_OVERLAY"/lib/
+
+  _vecho "copying apps"
+  mkdir -p "$INITRAMFS_OVERLAY"/sbin/
+  # TODO refactor: why change directory?
+  pushd "$INITRAMFS_OVERLAY"/sbin/
+  rm -rf "$INITRAMFS_OVERLAY"/sbin/*
+  for app in $apps; do
+    _vecho "including $app"
+    # allow more verbose copy
+    cp $(which $app) .
+  done
+
+  _vecho "copying libs (libzfs, etc) for bins"
+  # TODO refactor, this line is too long
+  for i in *; do lddtree -l $(which "$i" 2>/dev/null) 2>/dev/null ;done | grep -v ^/sbin/ | grep lib64 | sort | uniq | while read line ; do cp $line "$INITRAMFS_OVERLAY"/lib64/; done
+  # TODO this is gentoo-dependent ... so in genkernel
+  cp /usr/lib/gcc/$(eselect gcc show | sed 's:\(.*\)-:\1/:g')/libgcc_s.so.1 "$INITRAMFS_OVERLAY"/lib64/
+  popd # refactor out with pushd above
+
+  _vecho "including ncurses libs"
+  mkdir -p "$INITRAMFS_OVERLAY"/etc/
+  rm -rf "$INITRAMFS_OVERLAY"/etc/terminfo
+  find /lib64/ -iname "*libncurses*" -exec cp {} "$INITRAMFS_OVERLAY"/lib64/ \; || die "failed to copy ncurses"
+
+  # TODO ensure terminfo directory exists
+  cp -r /usr/share/terminfo "$INITRAMFS_OVERLAY"/etc/ || die "failed to copy terminfo"
+
+  # TODO support separate genkernel options
+  # TODO    * by variable in file
+  # TODO    * by command line arguments
+  # TODO    * by config file
+  genkernel --install --zfs --ssh --ssh-authorized-keys-file=/root/.ssh/authorized_keys --luks --bootloader=grub2 --mountboot --no-splash initramfs || die "genkernel failed to build initrd with overlay"
+
+  return 0
+}
+
+############################
+#
+# main script
+#
+###########################
+
+_parse_ags_main "$@"
+_action "$action"
+
+exit 0
