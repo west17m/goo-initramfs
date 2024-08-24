@@ -269,7 +269,7 @@ echo -ne " ${GREEN}*${ENDCOLOR} opening keyfile, need password: "
 cryptsetup luksOpen --readonly /root/loop.crypt key
 
 echo -e " ${GREEN}*${ENDCOLOR} opening hard drives\n"
-echo -e " $\n{YELLOW}=======================================================${ENDCOLOR}"
+echo -e " $\n${YELLOW}=======================================================${ENDCOLOR}"
 
 # find all the luks-encrypted devices
 # depends on blkid
