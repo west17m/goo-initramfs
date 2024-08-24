@@ -1,6 +1,7 @@
 loop.crypt
 sourceroot/bin
 sourceroot/etc/initrd.d
+sourceroot/etc/terminfo
 sourceroot/lib
 sourceroot/lib64
 sourceroot/usr/lib64

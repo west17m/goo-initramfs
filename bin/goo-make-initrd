@@ -220,7 +220,8 @@ _make-initrd() {
   rm -rf "$INITRAMFS_OVERLAY"/sbin/*
   for app in $apps; do
     _vecho "including $app"
-    cp -v $(which $app) .
+    # allow more verbose copy
+    cp $(which $app) .
   done
 
   _vecho "copying libs (libzfs, etc) for bins"
