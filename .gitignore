@@ -1,1 +1,10 @@
 loop.crypt
+sourceroot/bin
+sourceroot/etc/initrd.d
+sourceroot/lib
+sourceroot/lib64
+sourceroot/usr/lib64
+sourceroot/usr
+sourceroot/usr/bin
+sourceroot/usr/lib64
+sourceroot/sbin
