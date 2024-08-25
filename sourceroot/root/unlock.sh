@@ -297,8 +297,21 @@ fi
 
 echo -e " ${GREEN}*${ENDCOLOR} closing keyfile"
 cryptsetup luksClose /dev/mapper/key
+
+#
+# if unlocked via ssh session
+#
 if [[ -e /tmp/remote-rescueshell.lock ]]; then
   rm /tmp/remote-rescueshell.lock
 fi
+
+#
+# if unlocked via a tty rescueshell
+#
+if [[ -e /tmp/rescueshell.lock ]]; then
+  rm /tmp/rescueshell.lock
+fi
+
+resume-boot
 
 exit 0
