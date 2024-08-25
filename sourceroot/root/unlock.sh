@@ -297,7 +297,7 @@ fi
 
 echo -e " ${GREEN}*${ENDCOLOR} closing keyfile"
 cryptsetup luksClose /dev/mapper/key
-(sleep 1 && /usr/sbin/resume-boot)&
+/usr/sbin/resume-boot
 LOCK="/tmp/rescueshell.lock"
 if [ -f "${LOCK}" ]; then
   rm "${LOCK}"
