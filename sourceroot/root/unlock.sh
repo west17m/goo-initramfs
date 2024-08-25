@@ -275,7 +275,7 @@ echo -e " \n${YELLOW}=======================================================${EN
 # find all the luks-encrypted devices
 # depends on blkid
 let i=1
-for _dev in $(blkid --match-token TYPE=crypto_LUKS --output device | sort)
+for _dev in $(blkid --match-token TYPE=crypto_LUKS --output device | grep -v loop | sort)
 do
   echo -ne "${YELLOW}$i  ${ENDCOLOR}  "
   decrypt "$_dev"
@@ -297,9 +297,9 @@ fi
 
 echo -e " ${GREEN}*${ENDCOLOR} closing keyfile"
 cryptsetup luksClose /dev/mapper/key
+(sleep 1 && /usr/sbin/resume-boot)&
 LOCK="/tmp/rescueshell.lock"
 if [ -f "${LOCK}" ]; then
   rm "${LOCK}"
 fi
-/usr/sbin/resume-boot
 exit 0
