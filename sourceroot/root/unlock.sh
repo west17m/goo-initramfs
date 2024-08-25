@@ -266,10 +266,11 @@ show_menu
 
 echo -ne " ${GREEN}*${ENDCOLOR} opening keyfile, need password: "
 # old cryptsetup needs luksOpen
+# TODO move keyfile definition to configuration
 cryptsetup luksOpen --readonly /root/loop.crypt key
 
 echo -e " ${GREEN}*${ENDCOLOR} opening hard drives\n"
-echo -e " $\n${YELLOW}=======================================================${ENDCOLOR}"
+echo -e " \n${YELLOW}=======================================================${ENDCOLOR}"
 
 # find all the luks-encrypted devices
 # depends on blkid
